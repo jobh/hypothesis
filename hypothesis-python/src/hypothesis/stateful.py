@@ -35,6 +35,7 @@ from typing import (
 from unittest import TestCase
 
 import attr
+from _hypothesis_globals import stacked_context
 
 from hypothesis import strategies as st
 from hypothesis._settings import (
@@ -201,10 +202,6 @@ def run_state_machine_as_test(state_machine_factory, *, settings=None, _min_step
                 report("state.teardown()")
             machine.teardown()
 
-    # Use a machine digest to identify stateful tests in the example database
-    run_state_machine.hypothesis.inner_test._hypothesis_internal_add_digest = (
-        function_digest(state_machine_factory)
-    )
     # Copy some attributes so @seed and @reproduce_failure "just work"
     run_state_machine._hypothesis_internal_use_seed = getattr(
         state_machine_factory, "_hypothesis_internal_use_seed", None
@@ -214,7 +211,10 @@ def run_state_machine_as_test(state_machine_factory, *, settings=None, _min_step
     )
     run_state_machine._hypothesis_internal_print_given_args = False
 
-    run_state_machine(state_machine_factory)
+    # Use a machine digest to identify stateful tests in the example database
+    digest = function_digest(state_machine_factory)
+    with stacked_context(digest):
+        run_state_machine(state_machine_factory)
 
 
 class StateMachineMeta(type):

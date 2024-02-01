@@ -198,6 +198,19 @@ else:
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_call(item):
         __tracebackhide__ = True
+        if item.get_closest_marker("parametrize") is not None:
+            # ecute a particular test function manually or via pytest, or a method with unittest or
+            # pytest, we want to have the same database key in either case. So mixing in the nodeid is
+            # fine when it's a parametrized test because there's a solid benefit and we're unlikely to
+            # execute it without pytest, but I'd prefer to avoid doing that unconditionally.
+            with _hypothesis_globals.stacked_context(item.nodeid):
+                yield from _pytest_runtest_call_inner(item)
+        else:
+            yield from _pytest_runtest_call_inner(item)
+
+    def _pytest_runtest_call_inner(item):
+        __tracebackhide__ = True
+
         if not (hasattr(item, "obj") and "hypothesis" in sys.modules):
             yield
             return
@@ -293,10 +306,6 @@ else:
                     suppress_health_check={HealthCheck.differing_executors}
                     | set(settings.suppress_health_check),
                 )
-
-                # Give every parametrized test invocation a unique database key
-                key = item.nodeid.encode()
-                item.obj.hypothesis.inner_test._hypothesis_internal_add_digest = key
 
             store = StoringReporter(item.config)
 

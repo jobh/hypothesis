@@ -32,7 +32,9 @@ def test_find_uses_provided_random():
             st.text(),
             test,
             random=Random(13),
-            settings=settings(phases=[Phase.generate], max_examples=1000),
+            settings=settings(
+                phases=[Phase.generate], max_examples=1000, database=None
+            ),
         )
         if prev is None:
             prev = result

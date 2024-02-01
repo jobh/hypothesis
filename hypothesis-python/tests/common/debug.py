@@ -8,9 +8,14 @@
 # v. 2.0. If a copy of the MPL was not distributed with this file, You can
 # obtain one at https://mozilla.org/MPL/2.0/.
 
+from _hypothesis_globals import stacked_context
+
 from hypothesis import HealthCheck, Phase, Verbosity, given, settings as Settings
 from hypothesis.errors import Found, NoSuchExample, Unsatisfiable
-from hypothesis.internal.reflection import get_pretty_function_description
+from hypothesis.internal.reflection import (
+    function_digest,
+    get_pretty_function_description,
+)
 
 from tests.common.utils import no_shrink
 
@@ -61,7 +66,12 @@ def minimal(definition, condition=lambda x: True, settings=None, timeout_after=1
             raise Found
 
     try:
-        inner()
+        # We are confident that our strategies have stable repr, not leaking object addresses
+        # or other transient state. Hence we add their reprs as well as the predicate. This
+        # affects the database key generation -- even though database=None, the key is also
+        # used by derandomize=True so we want to minimize collisions.
+        with stacked_context(repr(definition), function_digest(condition)):
+            inner()
     except Found:
         return result
     raise Unsatisfiable(

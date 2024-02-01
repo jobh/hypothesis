@@ -43,6 +43,7 @@ from typing import (
 from unittest import TestCase
 
 import attr
+from _hypothesis_globals import context_stack
 
 from hypothesis import strategies as st
 from hypothesis._settings import (
@@ -616,14 +617,14 @@ def execute_explicit_examples(state, wrapped_test, arguments, kwargs, original_s
                     verbose_report(f)
 
 
-def get_random_for_wrapped_test(test, wrapped_test):
+def get_random_for_wrapped_test(test, wrapped_test, database_key):
     settings = wrapped_test._hypothesis_internal_use_settings
     wrapped_test._hypothesis_internal_use_generated_seed = None
 
     if wrapped_test._hypothesis_internal_use_seed is not None:
         return Random(wrapped_test._hypothesis_internal_use_seed)
     elif settings.derandomize:
-        return Random(int_from_bytes(function_digest(test)))
+        return Random(int_from_bytes(database_key))
     elif global_force_seed is not None:
         return Random(global_force_seed)
     else:
@@ -758,7 +759,7 @@ def get_executor(runner):
 
 
 class StateForActualGivenExecution:
-    def __init__(self, stuff, test, settings, random, wrapped_test):
+    def __init__(self, stuff, test, settings, random, wrapped_test, database_key):
         self.test_runner = get_executor(stuff.selfy)
         self.stuff = stuff
         self.settings = settings
@@ -769,6 +770,7 @@ class StateForActualGivenExecution:
 
         self.is_find = getattr(wrapped_test, "_hypothesis_internal_is_find", False)
         self.wrapped_test = wrapped_test
+        self.database_key = database_key
         self.xfail_example_reprs = set()
 
         self.test = test
@@ -1078,13 +1080,7 @@ class StateForActualGivenExecution:
         """
         # Tell pytest to omit the body of this function from tracebacks
         __tracebackhide__ = True
-        try:
-            database_key = self.wrapped_test._hypothesis_internal_database_key
-        except AttributeError:
-            if global_force_seed is None:
-                database_key = function_digest(self.test)
-            else:
-                database_key = None
+        database_key = self.database_key
 
         runner = self._runner = ConjectureRunner(
             self._execute_once_for_engine,
@@ -1416,7 +1412,9 @@ def given(
 
             settings = wrapped_test._hypothesis_internal_use_settings
 
-            random = get_random_for_wrapped_test(test, wrapped_test)
+            database_key = _incontext_database_key(test, wrapped_test, settings)
+
+            random = get_random_for_wrapped_test(test, wrapped_test, database_key)
 
             arguments, kwargs, stuff = process_arguments_to_given(
                 wrapped_test, arguments, kwargs, given_kwargs, new_signature.parameters
@@ -1475,7 +1473,7 @@ def given(
                     fail_health_check(settings, msg, HealthCheck.differing_executors)
 
             state = StateForActualGivenExecution(
-                stuff, test, settings, random, wrapped_test
+                stuff, test, settings, random, wrapped_test, database_key
             )
 
             reproduce_failure = wrapped_test._hypothesis_internal_use_reproduce_failure
@@ -1616,16 +1614,16 @@ def given(
             settings = Settings(
                 parent=wrapped_test._hypothesis_internal_use_settings, deadline=None
             )
-            random = get_random_for_wrapped_test(test, wrapped_test)
+            database_key = _incontext_database_key(test, wrapped_test, settings)
+            random = get_random_for_wrapped_test(test, wrapped_test, database_key)
             _args, _kwargs, stuff = process_arguments_to_given(
                 wrapped_test, (), {}, given_kwargs, new_signature.parameters
             )
             assert not _args
             assert not _kwargs
             state = StateForActualGivenExecution(
-                stuff, test, settings, random, wrapped_test
+                stuff, test, settings, random, wrapped_test, database_key
             )
-            digest = function_digest(test)
             # We track the minimal-so-far example for each distinct origin, so
             # that we track log-n instead of n examples for long runs.  In particular
             # it means that we saturate for common errors in long runs instead of
@@ -1651,7 +1649,7 @@ def given(
                     if settings.database is not None and (
                         known is None or sort_key(buffer) <= sort_key(known)
                     ):
-                        settings.database.save(digest, buffer)
+                        settings.database.save(database_key, buffer)
                         minimal_failures[data.interesting_origin] = buffer
                     raise
                 return bytes(data.buffer)
@@ -1684,6 +1682,19 @@ def given(
     return run_test_as_given
 
 
+def _incontext_database_key(
+    test: Callable, wrapped_test: Optional[Callable], settings: Settings
+) -> Optional[bytes]:
+    if getattr(wrapped_test, "_hypothesis_internal_database_key", None):
+        return wrapped_test._hypothesis_internal_database_key
+    elif settings.database is not None or settings.derandomize:
+        # Derive the database for the function, including the context
+        # the test is executed from (e.g., a parametrized pytest test)
+        return function_digest(test, context_stack(), check_database_key=True)
+    else:
+        return None
+
+
 def find(
     specifier: SearchStrategy[Ex],
     condition: Callable[[Any], bool],
@@ -1700,11 +1711,9 @@ def find(
         settings, suppress_health_check=list(HealthCheck), report_multiple_bugs=False
     )
 
-    if database_key is None and settings.database is not None:
-        # Note: The database key is not guaranteed to be unique. If not, replaying
-        # of database examples may fail to reproduce due to being replayed on the
-        # wrong condition.
-        database_key = function_digest(condition)
+    if database_key is None:
+        # Override default db key to use the condition rather than the inner test function
+        database_key = _incontext_database_key(condition, None, settings)
 
     if not isinstance(specifier, SearchStrategy):
         raise InvalidArgument(

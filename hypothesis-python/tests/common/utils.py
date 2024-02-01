@@ -13,6 +13,8 @@ import sys
 from io import StringIO
 from types import SimpleNamespace
 
+from _hypothesis_globals import stacked_context
+
 from hypothesis import Phase, settings
 from hypothesis.errors import HypothesisDeprecationWarning
 from hypothesis.internal.entropy import deterministic_PRNG
@@ -62,7 +64,9 @@ def flaky(max_runs, min_passes):
             while passes < min_passes:
                 runs += 1
                 try:
-                    func(*args, **kwargs)
+                    # Avoids spurious detected collisions
+                    with stacked_context(str(runs)):
+                        func(*args, **kwargs)
                     passes += 1
                 except BaseException:
                     if runs >= max_runs:

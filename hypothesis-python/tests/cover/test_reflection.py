@@ -209,6 +209,33 @@ def test_digests_are_reasonably_unique():
     )
 
 
+def test_inner_digests_are_reasonably_unique():
+    inner1 = inner2 = None
+
+    def do_def1():
+        nonlocal inner1
+        x = 1
+
+        def inner():
+            assert x == 1
+
+        inner1 = inner
+
+    def do_def2():
+        nonlocal inner2
+        x = 2
+
+        def inner():
+            assert x == 1
+
+        inner2 = inner
+
+    do_def1()
+    do_def2()
+
+    assert function_digest(inner1) != function_digest(inner2)
+
+
 def test_digest_returns_the_same_value_for_two_calls():
     assert function_digest(test_simple_conversion) == function_digest(
         test_simple_conversion

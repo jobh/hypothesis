@@ -85,22 +85,56 @@ def _clean_source(src: str) -> bytes:
     return "\n".join(x.rstrip() for x in src.splitlines() if x.rstrip()).encode()
 
 
-def function_digest(function):
+_digests = {}
+
+
+def _check_function_digest(function, digest):
+    seen = _digests.get(digest, [])
+    if id(function) not in seen:
+        if seen:
+            #coll = 1 + sum(len(l) - 1 for l in _digests.values())
+            # assert False
+            # breakpoint()
+            pass
+        else:
+            seen = _digests[digest] = []
+        seen.append(id(function))
+
+
+def _print_coll():
+    print(f"Potential collisions: {sum(len(l) - 1 for l in _digests.values())}")
+
+
+## ATTACH empty INTERNAL SETTINGS IN GIVEN dataclass or attr.ib or whatever
+## ASSUME EVERYWHERE ELSE THAT IT EXISTS or it is error
+## SET STUFF ON THAT INSTEAD OF STACKED_CONTEXT
+## STILL ADD_DIGEST CONTEXT VARIABLE, but only used by plugin now
+## Make current settings available from internal settings
+## Include (weak?) references to original test, wrapped test AND db-key test
+##  so that those are readily available and make lazy accessor methods possible
+## DETACH IT AGAIN at any point? Probably not necessary, just ensure anything
+##  is idempotent.
+
+
+import atexit
+
+atexit.register(_print_coll)
+
+
+def function_digest(function, add_digest=[], *, check_database_key=False):
     """Returns a string that is stable across multiple invocations across
     multiple processes and is prone to changing significantly in response to
     minor changes to the function.
 
-    No guarantee of uniqueness though it usually will be. Digest collisions
-    lead to unfortunate but not fatal problems during database replay.
+    No guarantee of uniqueness though it usually will be:
+    - Implementation is captured by `getsource`
+    - Surrounding scope is captured by `__module__`.`__qualname__`
+    - Variable scope (arguments) can be supplied as `add_digest`
     """
     hasher = hashlib.sha384()
     try:
         src = inspect.getsource(function)
     except (OSError, TypeError):
-        # If we can't actually get the source code, try for the name as a fallback.
-        # NOTE: We might want to change this to always adding function.__qualname__,
-        # to differentiate f.x. two classes having the same function implementation
-        # with class-dependent behaviour.
         try:
             hasher.update(function.__name__.encode())
         except AttributeError:
@@ -108,17 +142,27 @@ def function_digest(function):
     else:
         hasher.update(_clean_source(src))
     try:
+        # The source includes the function name if it succeeded - but regardless, mix
+        # in the module and fully qualified name to get the enclosing scope.
+        hasher.update(function.__module__.encode())
+        hasher.update(function.__qualname__.encode())
+    except AttributeError:
+        pass
+    try:
         # This is additional to the source code because it can include the effects
         # of decorators, or of post-hoc assignment to the .__signature__ attribute.
         hasher.update(repr(get_signature(function)).encode())
     except Exception:
         pass
-    try:
+    for item in add_digest:
         # We set this in order to distinguish e.g. @pytest.mark.parametrize cases.
-        hasher.update(function._hypothesis_internal_add_digest)
-    except AttributeError:
-        pass
-    return hasher.digest()
+        if isinstance(item, str):
+            item = item.encode()
+        hasher.update(item)
+    digest = hasher.digest()
+    if check_database_key:
+        _check_function_digest(function, digest)
+    return digest
 
 
 def check_signature(sig: inspect.Signature) -> None:

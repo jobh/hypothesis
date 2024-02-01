@@ -100,7 +100,7 @@ def test_max_year_is_respected():
 
 @given(dates())
 def test_single_date(val):
-    assert find_any(dates(val, val)) is val
+    assert_simple_property(dates(val, val), lambda v: v is val)
 
 
 def test_can_find_midnight():
