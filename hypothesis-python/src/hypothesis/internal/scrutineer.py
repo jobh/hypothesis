@@ -122,6 +122,7 @@ UNHELPFUL_LOCATIONS = (
     f"{sep}pluggy{sep}_manager.py",
     f"{sep}typing.py",
     f"{sep}pluggy{sep}_callers.py",
+    f"{sep}pluggy{sep}_hooks.py",
 )
 
 
