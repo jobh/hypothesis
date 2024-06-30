@@ -26,8 +26,12 @@ class Entry:
     @property
     def sort_key(self):
         if self.pins == 0:
-            # Unpinned entries are sorted by score.
-            return (0, self.score)
+            if self.value is not_set:
+                # Evict unset+unpinned values first
+                return (-1,)
+            else:
+                # Normal unpinned entries are sorted by score.
+                return (0, self.score)
         else:
             # Pinned entries sort after unpinned ones. Beyond that, we don't
             # worry about their relative order.
@@ -93,11 +97,17 @@ class GenericCache:
         return len(self.data)
 
     def __contains__(self, key):
-        return key in self.keys_to_indices
+        try:
+            i = self.keys_to_indices[key]
+            return self.data[i].value is not not_set
+        except KeyError:
+            return False
 
     def __getitem__(self, key):
         i = self.keys_to_indices[key]
         result = self.data[i]
+        if result.value is not_set:
+            raise KeyError(key)
         self.__entry_was_accessed(i)
         return result.value
 
@@ -106,7 +116,8 @@ class GenericCache:
         try:
             i = self.keys_to_indices[key]
         except KeyError:
-            entry = Entry(key, value, self.new_entry(key, value))
+            score = None if value is not_set else self.new_entry(key, value)
+            entry = Entry(key, value, score)
             if len(self.data) >= self.max_size:
                 evicted = self.data[0]
                 if evicted.pins > 0:
@@ -133,20 +144,24 @@ class GenericCache:
             self.on_evict(evicted.key, evicted.value, evicted.score)
 
     def __iter__(self):
-        return iter(self.keys_to_indices)
+        return (
+            k
+            for k, i in self.keys_to_indices.items()
+            if self.data[i].value is not not_set
+        )
 
-    def pin(self, key, value=not_set):
+    def pin(self, key):
         """Mark ``key`` as pinned. That is, it may not be evicted until
         ``unpin(key)`` has been called. The same key may be pinned multiple
         times and will not be unpinned until the same number of calls to
         unpin have been made.
 
-        If value is set, an atomic set-and-pin operation will be performed.
-        Otherwise, KeyError is raised if the key is not present (due to
-        early eviction for example).
+        The pin is "sticky", so the pin will succeed even if the key
+        is not present in the cache. If the key is later added to the
+        cache, it will start out in pinned state.
         """
-        if value is not not_set:
-            self[key] = value
+        if key not in self:
+            self[key] = not_set
 
         i = self.keys_to_indices[key]
         entry = self.data[i]
@@ -212,6 +227,7 @@ class GenericCache:
 
     def __entry_was_accessed(self, i):
         entry = self.data[i]
+        assert entry.value is not not_set
         new_score = self.on_access(entry.key, entry.value, entry.score)
         if new_score != entry.score:
             entry.score = new_score
