@@ -301,8 +301,8 @@ def target(observation: Union[int, float], *, label: str = "") -> Union[int, flo
     example shrinks right down to the threshold of failure (:issue:`2180`).
     """
     check_type((int, float), observation, "observation")
-    if not math.isfinite(observation):
-        raise InvalidArgument(f"{observation=} must be a finite float.")
+    if math.isnan(observation):
+        raise InvalidArgument(f"{observation=} must be an orderable float.")
     check_type(str, label, "label")
 
     context = _current_build_context.value
