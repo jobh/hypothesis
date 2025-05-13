@@ -36,7 +36,7 @@ from hypothesis._settings import (
 )
 from hypothesis.control import _current_build_context, current_build_context
 from hypothesis.core import TestFunc, given
-from hypothesis.errors import InvalidArgument, InvalidDefinition
+from hypothesis.errors import FlakyStrategyDefinition, InvalidArgument, InvalidDefinition
 from hypothesis.internal.compat import add_note, batched
 from hypothesis.internal.conjecture import utils as cu
 from hypothesis.internal.conjecture.engine import BUFFER_SIZE
@@ -1052,7 +1052,14 @@ class RuleStrategy(SearchStrategy):
             # be artificially large.
             return self.is_valid(r) and feature_flags.is_enabled(r.function.__name__)
 
-        rule = data.draw(st.sampled_from(self.rules).filter(rule_is_enabled))
+        try:
+            rule = data.draw(st.sampled_from(self.rules).filter(rule_is_enabled))
+        except FlakyStrategyDefinition as err:
+            err.add_note(
+                "Specifically, the expected rule could not run - this is usually due"
+                " to a flaky precondition or an empty bundle."
+            )
+            raise
 
         arguments = {}
         for k, strat in rule.arguments_strategies.items():

@@ -12,12 +12,34 @@ import sys
 
 import pytest
 
-from hypothesis import HealthCheck, Verbosity, assume, example, given, reject, settings
+from hypothesis import (
+    Phase,
+    HealthCheck,
+    Verbosity,
+    assume,
+    example,
+    given,
+    reject,
+    settings,
+)
 from hypothesis.core import StateForActualGivenExecution
-from hypothesis.errors import Flaky, FlakyFailure, Unsatisfiable, UnsatisfiedAssumption
+from hypothesis.errors import (
+    Flaky,
+    FlakyFailure,
+    FlakyStrategyDefinition,
+    Unsatisfiable,
+    UnsatisfiedAssumption,
+)
 from hypothesis.internal.compat import ExceptionGroup
 from hypothesis.internal.conjecture.engine import MIN_TEST_CALLS
 from hypothesis.internal.scrutineer import Tracer
+from hypothesis.stateful import (
+    Bundle,
+    RuleBasedStateMachine,
+    initialize,
+    rule,
+    run_state_machine_as_test,
+)
 from hypothesis.strategies import booleans, composite, integers, lists, random_module
 
 from tests.common.utils import Why, no_shrink, xfail_on_crosshair
@@ -206,3 +228,33 @@ def test_failure_sequence_inducing(building, testing, rnd):
         pass
     except UnsatisfiedAssumption:
         raise SatisfyMe from None
+
+
+
+
+def test_fails_in_freeze():
+    # there are probably more direct ways to achieve that, but this is one.
+
+    class Machine(RuleBasedStateMachine):
+
+        @initialize()
+        def init(self):
+            return None
+
+        @rule()
+        def fail_fast(self):
+            raise AssertionError
+
+        def _repr_step(self, rule, data, result):
+            raise TypeError
+
+    Machine.TestCase.settings = settings(database=None, phases=[Phase.generate])
+    #with pytest.raises(ExceptionGroup) as excinfo:
+    run_state_machine_as_test(Machine)
+    e = excinfo.value
+    assert len(e.exceptions) == 2
+    assert isinstance(e.exceptions[0], TypeError)
+    assert isinstance(e.exceptions[1], FlakyStrategyDefinition)
+    # The original AssertionError is not part of the flaky error, but it
+    # is present in notes as the pre-flake Conclusion
+    assert "AssertionError" in "\n".join(e.exceptions[1].__notes__)

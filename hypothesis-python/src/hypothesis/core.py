@@ -56,8 +56,10 @@ from hypothesis.errors import (
     DeadlineExceeded,
     DidNotReproduce,
     FailedHealthCheck,
+    Flaky,
     FlakyFailure,
     FlakyReplay,
+    FlakyStrategyDefinition,
     Found,
     Frozen,
     HypothesisException,
@@ -1266,6 +1268,12 @@ class StateForActualGivenExecution:
                     data.mark_interesting(interesting_origin)
                 except FlakyReplay as err:
                     raise self._flaky_replay_to_failure(err, e) from None
+                except Flaky as err:
+                    if isinstance(e, Flaky):
+                        # Cascading flakiness, raise the original
+                        raise e from None
+                    else:
+                        raise
 
         finally:
             # Conditional here so we can save some time constructing the payload; in
@@ -1513,8 +1521,12 @@ class StateForActualGivenExecution:
                 # Mostly useful for ``find`` and ensuring that objects that
                 # hold on to a reference to ``data`` know that it's now been
                 # finished and they can't draw more data from it.
-                ran_example.freeze()  # pragma: no branch
-                # No branch is possible here because we never have an active exception.
+                try:
+                    ran_example.freeze()
+                except FlakyStrategyDefinition as e:
+                    # Possibly caused by exception(s) already seen, so defer
+                    # to _raise_to_user to make those visible
+                    errors_to_report.append(([], e))
         _raise_to_user(
             errors_to_report,
             self.settings,
