@@ -251,8 +251,8 @@ def test_fails_in_freeze():
                 return super()._repr_step(*args)
 
     Machine.TestCase.settings = settings(database=None, phases=[Phase.generate])
-    #with pytest.raises(ExceptionGroup) as excinfo:
-    run_state_machine_as_test(Machine)
+    with pytest.raises(ExceptionGroup) as excinfo:
+        run_state_machine_as_test(Machine)
     e = excinfo.value
     assert len(e.exceptions) == 2
     assert isinstance(e.exceptions[0], TypeError)
