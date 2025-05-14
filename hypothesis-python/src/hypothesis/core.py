@@ -1210,16 +1210,16 @@ class StateForActualGivenExecution:
             # OK to re-raise it.
             raise
         except (
-            FailedHealthCheck,
+            HypothesisException,
             *skip_exceptions_to_reraise(),
         ):
             # These are fatal errors or control exceptions that should stop the
             # engine, so we re-raise them.
             raise
         except failure_exceptions_to_catch() as e:
-            # If an unhandled (i.e., non-Hypothesis) error was raised by
-            # Hypothesis-internal code, re-raise it as a fatal error instead
-            # of treating it as a test failure.
+            # If an error was raised by Hypothesis-internal code, re-raise it as a
+            # a fatal error instead of treating it as a test failure.
+            # HypothesisException is (usually) fatal whereever it is raised, above.
             if isinstance(e, BaseExceptionGroup) and len(e.exceptions) == 1:
                 # When a naked exception is implicitly wrapped in an ExceptionGroup
                 # due to a re-raising "except*", the ExceptionGroup is constructed in
@@ -1237,7 +1237,7 @@ class StateForActualGivenExecution:
             else:
                 tb = e.__traceback__
             filepath = traceback.extract_tb(tb)[-1][0]
-            if is_hypothesis_file(filepath) and not isinstance(e, HypothesisException):
+            if is_hypothesis_file(filepath):
                 raise
 
             if data.frozen:

@@ -232,7 +232,7 @@ class DidNotReproduce(HypothesisException):
     pass
 
 
-class Found(HypothesisException):
+class Found(Exception):
     """Signal that the example matches condition. Internal use only."""
 
 

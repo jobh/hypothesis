@@ -36,7 +36,7 @@ from hypothesis._settings import (
 )
 from hypothesis.control import _current_build_context, current_build_context
 from hypothesis.core import TestFunc, given
-from hypothesis.errors import FlakyStrategyDefinition, InvalidArgument, InvalidDefinition
+from hypothesis.errors import FlakyStrategyDefinition, InvalidArgument, InvalidDefinition, StopTest
 from hypothesis.internal.compat import add_note, batched
 from hypothesis.internal.conjecture import utils as cu
 from hypothesis.internal.conjecture.engine import BUFFER_SIZE
@@ -1037,11 +1037,8 @@ class RuleStrategy(SearchStrategy):
         return f"{self.__class__.__name__}(machine={self.machine.__class__.__name__}({{...}}))"
 
     def do_draw(self, data):
-        if not any(self.is_valid(rule) for rule in self.rules):
-            msg = f"No progress can be made from state {self.machine!r}"
-            raise InvalidDefinition(msg) from None
-
         feature_flags = data.draw(self.enabled_rules_strategy)
+        valid_rules = {}
 
         def rule_is_enabled(r):
             # Note: The order of the filters here is actually quite important,
@@ -1050,10 +1047,16 @@ class RuleStrategy(SearchStrategy):
             # rules are invalid we would make a lot more choices if we ask if they
             # are enabled before we ask if they are valid, so our test cases would
             # be artificially large.
-            return self.is_valid(r) and feature_flags.is_enabled(r.function.__name__)
+            is_valid = valid_rules[r.function] = self.is_valid(r)
+            return is_valid and feature_flags.is_enabled(r.function.__name__)
 
         try:
             rule = data.draw(st.sampled_from(self.rules).filter(rule_is_enabled))
+        except StopTest as e:
+            if len(valid_rules) == len(self.rules) and not any(valid_rules.values()):
+                msg = f"No progress can be made from state {self.machine!r}"
+                raise InvalidDefinition(msg) from e
+            raise
         except FlakyStrategyDefinition as err:
             err.add_note(
                 "Specifically, the expected rule could not run - this is usually due"
