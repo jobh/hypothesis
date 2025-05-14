@@ -41,6 +41,7 @@ from hypothesis.internal.floats import (
     int_to_float,
     sign_aware_lte,
 )
+from hypothesis.reporting import debug_report
 
 if TYPE_CHECKING:
     from typing import TypeAlias
@@ -56,11 +57,24 @@ class PreviouslyUnseenBehaviour(HypothesisException):
     pass
 
 
-_FLAKY_STRAT_MSG = (
-    "Inconsistent data generation! Data generation behaved differently "
-    "between different runs. Is your data generation depending on external "
-    "state?"
-)
+def _raise_flaky_strategy(msg, node, i, choice=None):
+
+    def choice_repr(choice_type, constraints):
+        kwargs = ", ".join(f"{k}={v}" for k,v in constraints.items())
+        return f"`{choice_type}({kwargs})`"
+
+    try:
+        detail = f"{choice_repr(node.choice_types[i], node.constraints[i])}"
+    except Exception:
+        detail = ""
+    if choice is not None:
+        detail += f" -> {choice_repr(*choice)}"
+    debug_report(f"flakiness: choice sequence {msg} at {node.transition.__class__.__name__} #{i} {detail}")
+    raise FlakyStrategyDefinition(
+        "Inconsistent data generation! Data generation behaved differently "
+        "between different runs. Is your data generation depending on external "
+        "state?"
+    )
 
 
 EMPTY: frozenset[int] = frozenset()
@@ -454,7 +468,7 @@ class TreeNode:
         """
 
         if i in self.forced:
-            raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+            _raise_flaky_strategy("trying to change a forced choice", self, i)
 
         assert not self.is_exhausted
 
@@ -1052,7 +1066,7 @@ class TreeRecordingObserver(DataObserver):
                 choice_type != node.choice_types[i]
                 or constraints != node.constraints[i]
             ):
-                raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+                _raise_flaky_strategy("changed", node, i, (choice_type, constraints))
             # Note that we don't check whether a previously
             # forced value is now free. That will be caught
             # if we ever split the node there, but otherwise
@@ -1060,7 +1074,7 @@ class TreeRecordingObserver(DataObserver):
             # means we skip a hash set lookup on every
             # draw and that's a pretty niche failure mode.
             if was_forced and i not in node.forced:
-                raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+                _raise_flaky_strategy("trying to change a forced choice", node, i, (choice_type, constraints))
             if value != node.values[i]:
                 node.split_at(i)
                 assert i == len(node.values)
@@ -1105,11 +1119,11 @@ class TreeRecordingObserver(DataObserver):
                 assert trans.status != Status.OVERRUN
                 # We tried to draw where history says we should have
                 # stopped
-                raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+                _raise_flaky_strategy("overrun at", node, i, (choice_type, constraints))
             else:
                 assert isinstance(trans, Branch), trans
                 if choice_type != trans.choice_type or constraints != trans.constraints:
-                    raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+                    _raise_flaky_strategy("inconsistent branch", node, i, (choice_type, constraints))
                 try:
                     self._current_node = trans.children[value]
                 except KeyError:
@@ -1129,7 +1143,10 @@ class TreeRecordingObserver(DataObserver):
             self._current_node.transition is not None
             and not isinstance(self._current_node.transition, Killed)
         ):
-            raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+            _raise_flaky_strategy(
+                "trying to exclude invalid region",
+                self.__current_node, self.__index_in_current_node
+            )
 
         if self._current_node.transition is None:
             self._current_node.transition = Killed(TreeNode())
@@ -1150,7 +1167,7 @@ class TreeRecordingObserver(DataObserver):
         node = self._current_node
 
         if i < len(node.values) or isinstance(node.transition, Branch):
-            raise FlakyStrategyDefinition(_FLAKY_STRAT_MSG)
+            _raise_flaky_strategy(f"concluding prematurely", node, i)
 
         new_transition = Conclusion(status, interesting_origin)
 
