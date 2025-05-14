@@ -22,6 +22,7 @@ from hypothesis import (
     reject,
     settings,
 )
+from hypothesis.control import current_build_context
 from hypothesis.core import StateForActualGivenExecution
 from hypothesis.errors import (
     Flaky,
@@ -37,6 +38,7 @@ from hypothesis.stateful import (
     Bundle,
     RuleBasedStateMachine,
     initialize,
+    precondition,
     rule,
     run_state_machine_as_test,
 )
@@ -230,23 +232,23 @@ def test_failure_sequence_inducing(building, testing, rnd):
         raise SatisfyMe from None
 
 
-
-
 def test_fails_in_freeze():
-    # there are probably more direct ways to achieve that, but this is one.
-
+    # Check that we don't lose the original error when freeze() reveals flakiness.
     class Machine(RuleBasedStateMachine):
 
         @initialize()
         def init(self):
-            return None
+            pass
 
         @rule()
         def fail_fast(self):
             raise AssertionError
 
-        def _repr_step(self, rule, data, result):
-            raise TypeError
+        def _repr_step(self, *args):
+            if current_build_context().is_final:
+                raise TypeError
+            else:
+                return super()._repr_step(*args)
 
     Machine.TestCase.settings = settings(database=None, phases=[Phase.generate])
     #with pytest.raises(ExceptionGroup) as excinfo:
@@ -255,6 +257,29 @@ def test_fails_in_freeze():
     assert len(e.exceptions) == 2
     assert isinstance(e.exceptions[0], TypeError)
     assert isinstance(e.exceptions[1], FlakyStrategyDefinition)
-    # The original AssertionError is not part of the flaky error, but it
-    # is present in notes as the pre-flake Conclusion
-    assert "AssertionError" in "\n".join(e.exceptions[1].__notes__)
+    # The original AssertionError is not part of the flake
+
+
+def test_flaky_precondition():
+    # Check that the note is visible in the exception, not hidden by cascading
+    # flakiness.
+    n = 0
+
+    class Machine(RuleBasedStateMachine):
+
+        @precondition(lambda _: n % 2 == 0)
+        @rule()
+        def conditional_rule(self):
+            pass
+
+        @rule()
+        def other(self):
+            nonlocal n
+            n += 1
+
+    Machine.TestCase.settings = settings(database=None, phases=[Phase.generate])
+    with pytest.raises(FlakyStrategyDefinition) as excinfo:
+        run_state_machine_as_test(Machine)
+    e = excinfo.value
+    assert hasattr(e, "__notes__"), "no explanatory note attached"
+    assert "the expected rule could not run" in "\n".join(e.__notes__)

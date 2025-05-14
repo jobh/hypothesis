@@ -27,6 +27,7 @@ from hypothesis._settings import local_settings, note_deprecation
 from hypothesis.database import ExampleDatabase, choices_from_bytes, choices_to_bytes
 from hypothesis.errors import (
     BackendCannotProceed,
+    Flaky,
     FlakyReplay,
     HypothesisException,
     InvalidArgument,
@@ -534,6 +535,9 @@ class ConjectureRunner:
             data.cannot_proceed_scope = exc.scope
             data.freeze()
             return
+        except Flaky:
+            interrupted = True
+            raise
         except BaseException:
             data.freeze()
             if self.settings.backend != "hypothesis":
