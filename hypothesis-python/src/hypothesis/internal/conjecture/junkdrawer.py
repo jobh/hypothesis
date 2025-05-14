@@ -311,11 +311,11 @@ class ensure_free_stackframes:
         if self.new_maxdepth == sys.getrecursionlimit():
             sys.setrecursionlimit(self.old_maxdepth)
         else:  # pragma: no cover
-            warnings.warn(
+            from hypothesis.reporting import report
+
+            report(
                 "The recursion limit will not be reset, since it was changed "
                 "from another thread or during execution of a test.",
-                HypothesisWarning,
-                stacklevel=2,
             )
 
 
