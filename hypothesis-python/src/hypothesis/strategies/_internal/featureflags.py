@@ -130,3 +130,6 @@ class FeatureStrategy(SearchStrategy[FeatureFlags]):
 
     def do_draw(self, data: ConjectureData) -> FeatureFlags:
         return FeatureFlags(data, at_least_one_of=self._at_least_one_of)
+
+    def __repr__(self):
+        return f"FeatureStrategy()"
