@@ -16,8 +16,8 @@ from contextlib import contextmanager
 from unittest import TestCase
 
 import pytest
-
 from _hypothesis_pytestplugin import item_scoped
+
 from hypothesis import example, given, strategies as st
 from hypothesis._settings import (
     HealthCheck,

@@ -2,6 +2,7 @@ import pytest
 
 num_test = 0
 
+
 @pytest.fixture
 def fixture_test():
     """to be extended by same-name fixture in module"""

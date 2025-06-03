@@ -1021,11 +1021,9 @@ class StateForActualGivenExecution:
             args = self.stuff.args  # includes fixtures
             kwargs = dict(self.stuff.kwargs)
             if self.ever_executed > 1:
-                if (reset_fixtures := getattr(
-                    self.test,
-                    "_hypothesis_internal_reset_fixtures",
-                    None
-                )):  # pragma: no cover  # covered in our pytest integration tests
+                if reset_fixtures := getattr(
+                    self.test, "_hypothesis_internal_reset_fixtures", None
+                ):  # pragma: no cover  # covered in our pytest integration tests
                     fixture_vals = reset_fixtures()
                     for key in fixture_vals.keys() & kwargs.keys():
                         kwargs[key] = fixture_vals[key]

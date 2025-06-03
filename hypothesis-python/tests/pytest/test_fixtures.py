@@ -11,8 +11,8 @@
 from unittest.mock import Mock, create_autospec
 
 import pytest
-
 from _hypothesis_pytestplugin import item_scoped
+
 from hypothesis import Phase, example, given, settings
 from hypothesis.strategies import integers
 

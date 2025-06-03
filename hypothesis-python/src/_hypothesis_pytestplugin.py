@@ -25,7 +25,6 @@ import os
 import sys
 import warnings
 from fnmatch import fnmatch
-from inspect import signature
 
 import _hypothesis_globals
 import pytest
@@ -75,13 +74,13 @@ class StoringReporter:
         self.results.append(msg)
 
 
-_item_scoped_fixtures = set([
+_item_scoped_fixtures = {
     # The ones below are never processed anyway, not being present in the
     # fixture closure, but setting them here makes it not-an-error to use
     # them as argument names when registering via @item_scoped.
     "request",  # pseudofixture, but also naturally item-scoped
     "self",  # non-fixture (bound) arg
-])
+}
 
 # Avoiding distutils.version.LooseVersion due to
 # https://github.com/HypothesisWorks/hypothesis/issues/2490
@@ -199,8 +198,9 @@ else:
         """Can be called by an external subtest runner to reset function scoped
         fixtures in-between function calls within a single test item."""
         from _pytest.compat import NOTSET
-        from _pytest.scope import Scope
         from _pytest.fixtures import SubRequest
+        from _pytest.scope import Scope
+
         self = request  # because prototyped inside _pytest.FixtureRequest
 
         info = self._fixturemanager.getfixtureinfo(
@@ -218,7 +218,7 @@ else:
             deps -= {fixture_name}
         traversal_order = []
         while deps_per_name:
-            to_remove = set(name for name, deps in deps_per_name.items() if not deps)
+            to_remove = {name for name, deps in deps_per_name.items() if not deps}
             traversal_order += to_remove
             if not to_remove:
                 # We're stuck in a cyclic dependency. This can actually happen in
@@ -358,14 +358,14 @@ else:
                     if functionscoped_fixture:
                         transitive_fixtures |= set(fx.argnames) - {fx_name}
 
-            if (reused_transitive := transitive_fixtures & reused_fixture_names):
+            if reused_transitive := transitive_fixtures & reused_fixture_names:
                 if True:
                     # currently more precisely caught as a cyclic dependency, but
                     # remains a TODO to figure out precise limitations
                     pass
                 elif (
-                        HealthCheck.function_scoped_fixture
-                        in settings.suppress_health_check
+                    HealthCheck.function_scoped_fixture
+                    in settings.suppress_health_check
                 ):
                     functionscoped_fixture = False
                 else:
@@ -375,7 +375,9 @@ else:
                         HealthCheck.function_scoped_fixture,
                     )
 
-            if parametrized_fixture or (item.get_closest_marker("parametrize") is not None):
+            if parametrized_fixture or (
+                item.get_closest_marker("parametrize") is not None
+            ):
                 # Disable the differing_executors health check due to false alarms:
                 # see https://github.com/HypothesisWorks/hypothesis/issues/3733
                 from hypothesis import settings as Settings
@@ -398,7 +400,10 @@ else:
                 def reset():
                     _reset_function_scoped_fixtures(item._request)
                     return item.funcargs
-                item.obj.hypothesis.inner_test._hypothesis_internal_reset_fixtures = reset
+
+                item.obj.hypothesis.inner_test._hypothesis_internal_reset_fixtures = (
+                    reset
+                )
 
             store = StoringReporter(item.config)
 
@@ -569,6 +574,7 @@ else:
 
 def item_scoped(fn):
     import inspect
+
     from hypothesis.errors import InvalidArgument
 
     # Just simple checking, as this is an advanced niche feature. We should
