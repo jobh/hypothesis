@@ -205,6 +205,8 @@ class HealthCheck(Enum, metaclass=HealthCheckMeta):
     for the whole function, not once per example, and this is usually not what
     you want.
 
+    TODO rewrite?
+
     Because of this limitation, tests that need to set up or reset
     state for every example need to do so manually within the test itself,
     typically using an appropriate context manager.

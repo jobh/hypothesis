@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
+from _hypothesis_pytestplugin import item_scoped
 from hypothesis import is_hypothesis_test
 from hypothesis._settings import is_in_ci
 from hypothesis.errors import NonInteractiveExampleWarning
@@ -100,7 +101,8 @@ except ImportError:
 
 
 @pytest.fixture(scope="function", autouse=True)
-def _consistently_increment_time(monkeypatch):
+@item_scoped
+def _consistently_increment_time(monkeypatch_item):
     """Rather than rely on real system time we monkey patch time.time so that
     it passes at a consistent rate between calls.
 
@@ -130,13 +132,14 @@ def _consistently_increment_time(monkeypatch):
         frozen = True
 
     def _patch(name, fn):
-        monkeypatch.setattr(time_module, name, wraps(getattr(time_module, name))(fn))
+        wrapped = wraps(getattr(time_module, name))(fn)
+        monkeypatch_item.setattr(time_module, name, wrapped)
 
     _patch("time", time)
     _patch("monotonic", time)
     _patch("perf_counter", time)
     _patch("sleep", sleep)
-    monkeypatch.setattr(time_module, "freeze", freeze, raising=False)
+    monkeypatch_item.setattr(time_module, "freeze", freeze, raising=False)
 
     # In the patched time regime, observing it causes it to increment. To avoid reintroducing
     # non-determinism due to GC running at arbitrary times, we patch the GC observer
