@@ -18,6 +18,7 @@ from types import ModuleType
 import pytest
 
 from hypothesis import example, given, note, settings, strategies as st
+from hypothesis._settings import is_in_ci
 from hypothesis.internal.compat import PYPY
 from hypothesis.internal.constants_ast import (
     Constants,
@@ -146,7 +147,7 @@ def test_frozenset_constants(value):
 @skipif_threading
 @skipif_emscripten
 @pytest.mark.xfail(
-    condition=settings._current_profile != "ci",
+    condition=not is_in_ci(),
     strict=False,
     reason="Requires clean environment",
 )
